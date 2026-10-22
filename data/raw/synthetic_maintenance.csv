@@ -1,0 +1,8 @@
+machine_id,event_date,event_type,technician_notes,resolved
+M-01,2026-01-18,corrective_maintenance,Inspected and replaced tool after wear-related torque drift.,true
+M-02,2026-01-28,corrective_maintenance,Cleaned cooling fins and airflow path; verified rotational speed restored to spec.,true
+M-03,2026-02-07,corrective_maintenance,Checked drive motor and power supply; power draw back within normal band.,true
+M-04,2026-02-17,corrective_maintenance,"Overstrain condition flagged; parts on order, machine still running under load.",false
+M-05,2026-02-22,corrective_maintenance,"Investigated isolated anomaly; no recurring pattern found, logged as one-off.",false
+M-06,2026-01-15,corrective_maintenance,Replaced worn cutting tool; torque and wear reset to baseline.,true
+M-06,2026-02-18,corrective_maintenance,"Second tool-wear episode — same failure mode as prior repair. Recommend reviewing feed-rate settings, not just replacing the tool.",true

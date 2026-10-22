@@ -1,0 +1,71 @@
+# Runtime dependencies for the API (Dockerfile) and frontend
+# (frontend/Dockerfile) containers only.
+#
+# This is deliberately a SUBSET of requirements.txt, not a replacement for
+# it. requirements.txt remains the source of truth for local development
+# (it installs everything, including the Phase 1 PySpark pipeline and
+# pytest). This file exists because:
+#
+#   - Nothing under app/ or frontend/ imports pyspark, pandas, pyarrow, or
+#     pytest (verified: `grep -rn "^import\|^from" app | grep -E
+#     "pandas|pyarrow|pyspark"` matches nothing but a .pyc). Those are
+#     Phase 1 batch-job and test-suite dependencies.
+#   - PySpark alone pulls in a JVM and ~300MB of jars. Installing it in an
+#     image that only serves FastAPI/Streamlit requests would roughly
+#     double image size and build time for code that never runs.
+#
+# If a future phase adds a runtime import of pandas/pyarrow to app/ or
+# frontend/, add it back here explicitly — don't just copy requirements.txt
+# over this file.
+#
+# Versions are pinned identically to requirements.txt. Keep them in sync
+# by hand; there is no dependency-management tool wiring the two together.
+
+# --- Phase 2: PostgreSQL --------------------------------------------------
+SQLAlchemy==2.0.54
+psycopg2-binary==2.9.13
+python-dotenv==1.2.2
+
+# --- Phase 3: RAG (local BM25 backend; langchain-text-splitters is used at
+# ingestion time only, not by the retriever, but kept for parity/import
+# safety since app/rag/documents.py is imported by app/rag/retriever.py's
+# module graph) -------------------------------------------------------------
+langchain-text-splitters==1.1.2
+
+# --- Phase 4: FastAPI --------------------------------------------------
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+
+# --- Phase 5: LangGraph agent -------------------------------------------
+langgraph==1.2.11
+
+# --- Phase 7: Streamlit frontend ----------------------------------------
+# (installed in frontend/Dockerfile's image, not the API image — listed
+# here so both Dockerfiles can reference this single file)
+streamlit==1.64.0
+requests==2.32.3
+
+# NOTE: google-genai and pinecone (requirements-cloud.txt) are NOT included.
+# Both are imported lazily (see app/agents/llm.py, app/rag/vector_store.py)
+# specifically so the app runs with RAG_BACKEND=local and
+# GEMINI_SYNTHESIS_ENABLED unset/false with neither package installed. If
+# you want the Pinecone + Vertex AI path inside Docker, add
+# `pip install -r requirements-cloud.txt` to the Dockerfile and supply
+# GOOGLE_APPLICATION_CREDENTIALS via a mounted volume — do not bake a
+# service-account key into the image.
+
+# --- Phase 3: uploads ------------------------------------------------------
+# pandas (+ numpy, its dependency): the API now previews uploaded CSVs and runs the
+# Phase 1 mapping dry-run (app/onboarding/sensors.py) on a sample. pyarrow and PySpark
+# stay out: the worker image (requirements-worker.txt) is where Spark runs.
+pandas==3.0.2
+
+# Phase 4 (users, roles, login): argon2id password hashes (app/core/security.py) and
+# HS256 JWTs. Both are needed by the API image and the manage_users.py CLI.
+argon2-cffi==25.1.0
+PyJWT==2.15.1
+
+# Phase 5 (pull connector): test-connection and schedule validation run in the API.
+google-cloud-storage==3.16.0
+cronsim==2.7

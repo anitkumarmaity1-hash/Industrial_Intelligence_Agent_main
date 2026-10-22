@@ -1,0 +1,11 @@
+# Normalize line endings on checkout so a Windows editor (the source of the
+# stray "-Uri" file this replaces the ignore-rule for) can't reintroduce
+# mixed CRLF/LF diffs. Text files are normalized to LF in the repo; Git
+# converts to the platform's native ending on checkout only if core.autocrlf
+# is configured to do so.
+* text=auto eol=lf
+
+# Binary / generated artifacts — never touch line endings, never diff as text.
+*.parquet binary
+*.gz binary
+sql/seed.sql.gz binary

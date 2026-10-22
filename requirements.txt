@@ -1,0 +1,49 @@
+# Phase 1 dependencies (data layer).
+pyspark==3.5.3
+# PySpark 3.5 imports distutils (toPandas); Python 3.12 removed it, setuptools supplies it.
+setuptools<81
+pytest==8.3.3
+
+# Phase 2 dependencies (PostgreSQL layer). Later phases will extend this
+# file — do not add anything here that isn't used yet.
+pandas==3.0.2
+pyarrow==25.0.1
+SQLAlchemy==2.0.54
+psycopg2-binary==2.9.13
+python-dotenv==1.2.2
+
+# Phase 3 dependencies (RAG layer).
+# Used for header-aware Markdown splitting only. Pinned to the version the
+# Phase 3 tests were verified against — 1.x is published but untested here.
+langchain-text-splitters==1.1.2
+
+# The Pinecone + Vertex AI retrieval backend has its own requirements file
+# (requirements-cloud.txt) so the default offline backend, the test suite and
+# CI install neither a cloud SDK nor any credentials.
+
+# Phase 4 dependencies (FastAPI layer).
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+httpx==0.28.1
+# Phase 5 dependencies (LangGraph agent layer). No LLM SDK here — Gemini
+# synthesis is Phase 6 and lives in requirements-cloud.txt. The graph
+# itself only orchestrates the already-tested query/retrieval tools.
+langgraph==1.2.11
+
+# Phase 7 dependencies (Streamlit frontend).
+streamlit==1.64.0
+requests==2.32.3
+# Production-readiness fix 9 (schema migrations). No optional extra —
+# every environment that touches sql/schema.sql (dev, CI, a real deploy)
+# needs this.
+alembic==1.20.0
+
+# Phase 4 (users, roles, login): argon2id password hashes (app/core/security.py) and
+# HS256 JWTs. Both are needed by the API image and the manage_users.py CLI.
+argon2-cffi==25.1.0
+PyJWT==2.15.1
+
+# Phase 5 (pull connector): GCS client, 5-field cron parser. Both are also needed by the API
+# (test-connection, schedule validation) and the worker image.
+google-cloud-storage==3.16.0
+cronsim==2.7

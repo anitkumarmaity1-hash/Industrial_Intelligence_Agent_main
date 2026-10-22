@@ -1,0 +1,27 @@
+# Optional cloud dependencies — needed only for RAG_BACKEND=pinecone
+# (and, from Phase 6, for Gemini via Vertex AI).
+#
+#     pip install -r requirements.txt -r requirements-cloud.txt
+#
+# Versions are the latest published at time of writing. Import surface and
+# method signatures were verified locally; live API calls were NOT, because
+# the development sandbox has no egress to Google or Pinecone.
+google-genai==2.24.0
+pinecone==10.0.0
+
+# Phase 10 (agentic evidence-gathering, AGENTIC_ROUTING_ENABLED=true only)
+# — see app/agents/planner.py. Deliberately NOT langchain-google-vertexai:
+# that package pins pyarrow<24.0.0, which directly conflicts with this
+# project's own pyarrow==25.0.1 pin above (used by the Spark/Parquet
+# pipeline) and would also pull in google-cloud-aiplatform/storage/
+# vectorsearch just for a thin chat-model wrapper. langchain-core alone
+# (no pyarrow dependency) plus the google-genai client above — already
+# required for synthesis — is everything Phase 10 needs; see
+# app/agents/planner.py's module docstring for the adapter that bridges
+# them. Import surface verified locally against these exact pinned
+# versions; the live Vertex tool-calling round trip was NOT verified,
+# same disclosure as google-genai above: this sandbox has no egress to
+# Google. Run one real /investigate call with AGENTIC_ROUTING_ENABLED=true
+# against your own GOOGLE_CLOUD_PROJECT before relying on this for a live
+# demo.
+langchain-core==1.6.3

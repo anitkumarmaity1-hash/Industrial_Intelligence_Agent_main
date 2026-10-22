@@ -1,0 +1,42 @@
+# Keeps the build context (and therefore build time/image layers) small.
+# COPY in the Dockerfiles only pulls specific paths anyway, but without
+# this file Docker still uploads everything below to the daemon first.
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+pytest_tmp/
+.pytest_tmp/
+
+# Streamlit's agent-skill symlinks (see Demo.zip's own note: these are
+# environment-specific and shouldn't travel with the image any more than
+# with git).
+.agents/
+.claude/
+
+# Everything under data/ except what the API Dockerfile explicitly COPYs
+# (data/processed/document_chunks.jsonl) — raw datasets, sample data, and
+# the parquet directories are Phase 1 pipeline output, multi-MB, and
+# unused at request time.
+data/raw/
+data/sample/
+data/processed/*.parquet
+data/processed/**/*.parquet
+
+# documents/ is read at ingestion time (scripts/ingest_documents.py) to
+# produce document_chunks.jsonl, not at API request time — see Dockerfile.
+documents/
+
+# Never send local secrets to the build daemon.
+.env
+.env.*
+!.env.example
+
+.git/
+.gitignore
+README.md
+tests/data/storage
+
+# Phase 5: connector secret files
+secrets/

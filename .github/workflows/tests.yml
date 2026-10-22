@@ -1,0 +1,160 @@
+name: tests
+
+# F4 fix: the README's Testing section and this project's own "no CI" gap
+# (audit item F4/P2) both pointed at the same thing — a recruiter's clone
+# should be provable without trusting the author's local run. This runs the
+# exact suite the README documents (`pytest -m "not dense"`) against a real,
+# ephemeral Postgres seeded from the same two files docker-compose.yml uses
+# (sql/schema.sql + sql/seed.sql.gz), so CI and the Docker demo are backed
+# by identical data. `dense` tests (live Pinecone/Vertex calls) need real
+# credentials and are intentionally out of scope for CI — see README
+# "Testing" and "Limitations".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:   # manual run — e.g. the load-test job (fix 16)
+  schedule:
+    - cron: "0 7 * * 1" # weekly load-test run (Mondays 07:00 UTC)
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: iia
+          POSTGRES_PASSWORD: iia
+          POSTGRES_DB: iia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U iia -d iia"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://iia:iia@localhost:5432/iia
+      # Cloud SDKs aren't installed (see "Install dependencies" below), so
+      # RAG_BACKEND stays on the local/offline path the test suite targets
+      # and GEMINI_SYNTHESIS_ENABLED stays off — no Pinecone/Vertex
+      # credentials exist in this job, on purpose.
+      RAG_BACKEND: local
+      GEMINI_SYNTHESIS_ENABLED: "false"
+      AGENTIC_ROUTING_ENABLED: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      # test_pipeline.py drives PySpark, which needs a local JVM — the same
+      # requirement README > Limitations calls out for a developer machine.
+      - name: Set up Java (for PySpark)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # requirements-cloud.txt (google-genai, pinecone, langchain-core)
+          # is deliberately NOT installed here — tests that need it use
+          # pytest.importorskip and skip cleanly without it (see README's
+          # "132 passed" vs "124 passed, 8 skipped" note), matching a clone
+          # that hasn't set up cloud credentials either.
+
+      - name: Apply schema via Alembic migrations
+        # Runs the real migration chain (migrations/versions/) against a
+        # fresh database, rather than applying sql/schema.sql directly —
+        # this is what proves the migrations themselves work in CI, not
+        # just that they're equivalent to schema.sql (that equivalence is
+        # what tests/test_migrations.py checks, on its own throwaway DB).
+        run: alembic upgrade head
+
+      - name: Load seed data
+        run: gunzip -c sql/seed.sql.gz | psql "$DATABASE_URL"
+
+      - name: Provision the least-privilege API role (Phase 2, RLS)
+        # DATABASE_URL stays the owner/superuser connection (fixtures,
+        # migrations). The API under test and tests/test_rls.py connect as
+        # iia_app via APP_DATABASE_URL, so CI actually exercises RLS. The
+        # password is random per run and masked; nothing is hardcoded.
+        run: |
+          APP_DB_PASSWORD="$(openssl rand -hex 16)"
+          WORKER_DB_PASSWORD="$(openssl rand -hex 16)"
+          echo "::add-mask::$APP_DB_PASSWORD"
+          echo "::add-mask::$WORKER_DB_PASSWORD"
+          echo "APP_DATABASE_URL=postgresql://iia_app:${APP_DB_PASSWORD}@localhost:5432/iia" >> "$GITHUB_ENV"
+          echo "WORKER_DATABASE_URL=postgresql://iia_worker:${WORKER_DB_PASSWORD}@localhost:5432/iia" >> "$GITHUB_ENV"
+          APP_DB_PASSWORD="$APP_DB_PASSWORD" WORKER_DB_PASSWORD="$WORKER_DB_PASSWORD" python scripts/provision_app_role.py
+
+      - name: Generate synthetic raw data (git-ignored, seed=42)
+        # data/raw/synthetic_operational.csv is ignored by .gitignore (too
+        # large to commit), so a fresh clone does not have it. The Spark
+        # tests (test_pipeline.py, test_anomaly_rules.py) read it.
+        run: python scripts/generate_synthetic_data.py
+
+      - name: Run tests
+        # "load" (production-readiness fix 16) generates/queries ~1M+ rows —
+        # genuinely slow, and the point of CI is a fast, reliable signal on
+        # every push. Run it on a schedule/manually instead: see the
+        # separate load-test job below.
+        run: pytest -m "not dense and not load" -v
+
+      - name: Summarize RAG retrieval evaluation
+        # Production-readiness fix 20: evaluate_retriever's local-backend
+        # run is already a hard assertion inside tests/test_rag.py (it's
+        # part of the "Run tests" step above, not optional) — this step
+        # adds the metrics themselves to the job's summary so a regression
+        # in hit rate / MRR is visible without opening test output, even
+        # on a run where the pass/fail assertion alone wouldn't surface it.
+        run: python scripts/report_rag_evaluation.py >> "$GITHUB_STEP_SUMMARY"
+
+  load-test:
+    # Production-readiness fix 16: the 1M-row scenario from the audit's
+    # Part 2.1, run against a real ephemeral Postgres on a schedule
+    # (not every push — see the "not load" exclusion above) and
+    # manually via workflow_dispatch before anything that touches
+    # indexing/partitioning ships.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: iia
+          POSTGRES_PASSWORD: iia
+          POSTGRES_DB: iia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U iia -d iia"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://iia:iia@localhost:5432/iia
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - run: alembic upgrade head
+      - run: pytest -m load -v

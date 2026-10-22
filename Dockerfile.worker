@@ -1,0 +1,32 @@
+# Industrial Intelligence Agent — background worker image (Phase 3)
+#
+# Runs `python -m app.jobs.worker`: the upload ingest pipeline. Unlike the API image
+# it needs PySpark AND a JVM, because detection runs the same Spark code
+# (spark_jobs/) as the offline pipeline, in local mode. Kept as its own image so the
+# API image stays lean (see requirements-runtime.txt for why).
+
+FROM python:3.12-slim-bookworm
+
+WORKDIR /srv
+
+# Spark needs a JVM; headless is enough. The base is pinned to Debian 12 (bookworm) because
+# the unpinned python:3.12-slim moved to Debian 13, which no longer ships openjdk-17.
+# Spark 3.5 is tested on Java 17. procps gives Spark's launcher the `ps` it expects.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openjdk-17-jre-headless procps \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements-worker.txt ./
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
+COPY app/ ./app/
+COPY spark_jobs/ ./spark_jobs/
+
+# /srv/data/storage is created owned by the app user so the shared upload volume
+# mounted there is writable.
+RUN mkdir -p /srv/data/storage && useradd --create-home --uid 1000 appuser && chown -R appuser:appuser /srv
+USER appuser
+
+# No DATABASE_URL here on purpose: the worker connects as `iia_worker` through
+# WORKER_DATABASE_URL (set by docker-compose); it must not hold owner credentials.
+CMD ["python", "-m", "app.jobs.worker"]

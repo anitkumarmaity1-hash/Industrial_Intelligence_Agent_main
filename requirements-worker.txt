@@ -1,0 +1,16 @@
+# Dependencies of the background worker image (Dockerfile.worker, Phase 3).
+#
+# A SUBSET of requirements.txt, pinned identically (keep them in sync by hand,
+# like requirements-runtime.txt). It needs PySpark (+ a JVM, installed in the
+# image) because the worker runs the same Spark detection code as the offline
+# pipeline; it does NOT need FastAPI, LangGraph, Streamlit or pytest.
+pyspark==3.5.3
+setuptools<81
+pandas==3.0.2
+SQLAlchemy==2.0.54
+psycopg2-binary==2.9.13
+python-dotenv==1.2.2
+
+# Phase 5 (pull connector): the worker runs the scheduled pulls.
+google-cloud-storage==3.16.0
+cronsim==2.7
